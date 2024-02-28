@@ -295,7 +295,7 @@ class BootstrapTester(Tester):
              logger.debug("Bootstrap node 2 with delay")
              node2 = new_node(cluster, byteman_port='4200')
              node2.update_startup_byteman_script(mk_bman_path('bootstrap_5s_sleep.btm'))
-             node2.start(wait_for_binary_proto=True)
+             node2wait_for_binary_proto=True)
 
              assert_bootstrap_state(self, node2, 'COMPLETED')
              assert node2.grep_log('Bootstrap completed', filename='debug.log')

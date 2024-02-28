@@ -4,11 +4,13 @@ import time
 import pytest
 import logging
 import re
+import psutil
 
 from cassandra import ConsistencyLevel
 from dtest import Tester, create_ks, create_cf
 from tools.assertions import assert_stderr_clean
 from tools.jmxutils import (JolokiaAgent, make_mbean)
+from threading import Thread
 
 since = pytest.mark.since
 skip = pytest.mark.skip
@@ -115,7 +117,7 @@ class TestGossipingPropertyFileSnitch(Tester):
         assert re.search(ipstr.format(NODE1_LISTEN_ADDRESS), out)
         assert re.search(ipstr.format(NODE2_LISTEN_ADDRESS), out)
 
-    @skip(reason="needs CASSANDRA-18657")
+
     def test_prefer_local_reconnect_on_restart(self):
         """
         @jira_ticket CASSANDRA-16718
@@ -150,7 +152,13 @@ class TestGossipingPropertyFileSnitch(Tester):
         node1.start(wait_for_binary_proto=True)
         node2.start(wait_for_binary_proto=True, wait_other_notice=False)
 
-        node1.stress(['write', 'n=100', 'no-warmup'])
+        session = self.patient_cql_connection(node1)
+        session.execute("CREATE KEYSPACE keyspace1 WITH REPLICATION = {'class': 'NetworkTopologyStrategy', 'dc1': 2}")
+        session.execute("""CREATE TABLE keyspace1.standard1 (id int primary key, val int)""")
+
+        # Insert and query data
+        session.execute("INSERT INTO keyspace1.standard1(id, val) VALUES (0, 0)")
+        session.execute("INSERT INTO keyspace1.standard1(id, val) VALUES (1, 0)")
         node2.stop()
 
         node2.set_configuration_options(values={'listen_address': NODE2_LISTEN_ADDRESS_DIFFERENT})
@@ -160,6 +168,91 @@ class TestGossipingPropertyFileSnitch(Tester):
         query = session.prepare("SELECT * from keyspace1.standard1;");
         query.consistency_level = ConsistencyLevel.ALL;
         session.execute(query)
+
+
+    def test_cross_dc_streaming_with_preferred(self):
+        """
+        Check that streaming does not use the preferred_ip cross-dc
+        """
+        NODE1_LISTEN_ADDRESS = '127.0.0.1'
+        NODE1_BROADCAST_ADDRESS = '127.0.0.3'
+
+        NODE2_LISTEN_ADDRESS = '127.0.0.2'
+        NODE2_BROADCAST_ADDRESS = '127.0.0.4'
+
+        cluster = self.cluster
+        cluster.populate(2)
+        node1, node2 = cluster.nodelist()
+
+        cluster.seeds = [NODE1_BROADCAST_ADDRESS]
+        cluster.set_configuration_options(values={'endpoint_snitch': 'org.apache.cassandra.locator.GossipingPropertyFileSnitch',
+                                                  'listen_on_broadcast_address': 'true'})
+        node1.set_configuration_options(values={'broadcast_address': NODE1_BROADCAST_ADDRESS})
+        node2.set_configuration_options(values={'broadcast_address': NODE2_BROADCAST_ADDRESS})
+
+        # put nodes in different DCs
+        with open(os.path.join(node1.get_conf_dir(), 'cassandra-rackdc.properties'), 'w') as snitch_file:
+            snitch_file.write("dc=dc1" + os.linesep)
+            snitch_file.write("rack=rack1" + os.linesep)
+            snitch_file.write("prefer_local=true" + os.linesep)
+
+        with open(os.path.join(node2.get_conf_dir(), 'cassandra-rackdc.properties'), 'w') as snitch_file:
+            snitch_file.write("dc=dc2" + os.linesep)
+            snitch_file.write("rack=rack1" + os.linesep)
+            snitch_file.write("prefer_local=true" + os.linesep)
+
+
+        node1.start(wait_for_binary_proto=True)
+        node1.mark_log()
+        node2.start(wait_for_binary_proto=True, wait_other_notice=False) # so second dc is known
+        node1.watch_log_for('127.0.0.4:7000 is now UP')
+        session = self.patient_exclusive_cql_connection(node1)
+        session.execute("CREATE KEYSPACE testpreferred WITH replication = {'class': 'NetworkTopologyStrategy', 'dc1': 1, 'dc2': 1}")
+        session.execute("CREATE TABLE testpreferred.tbl1 (key int PRIMARY KEY) WITH speculative_retry = 'NONE'")
+        node2.stop()
+        node1.watch_log_for('127.0.0.4:7000 is now DOWN')
+        insert_stmt = session.prepare("INSERT INTO testpreferred.tbl1 (key) VALUES (?)")
+        insert_stmt.consistency_level = ConsistencyLevel.ONE
+        for x in range(100):
+            session.execute(insert_stmt, [x])
+        node1.flush()
+        node1.mark_log()
+        node2.start(wait_for_binary_proto=True, wait_other_notice=False)
+        node1.watch_log_for('127.0.0.4:7000 is now UP')
+        rebuild_thread  = Thread(target=run_nodetool_in_thread, args=(node2, 'rebuild dc1',))
+        rebuild_thread.start()
+        # Wait for rebuild to start running
+        node2.watch_log_for('rebuild from dc: dc1')
+        # Check active connections while rebuild is running
+        node1_conn_on_wrong_ip = None
+        node2_conn_on_wrong_ip = None
+        while True or node1_conn_on_wrong_ip or node2_conn_on_wrong_ip:
+            n1 = psutil.Process(node1.pid)
+            for conn in n1.connections():
+                try:
+                    if conn.raddr.port == 7000 and conn.raddr.ip == NODE2_LISTEN_ADDRESS:
+                        node1_conn_on_wrong_ip = conn
+                        logger.debug("Node1 conn: {}".format(conn))
+                except AttributeError:
+                    pass
+            n2 = psutil.Process(node2.pid)
+            for conn in n2.connections():
+                try:
+                    if conn.raddr.port == 7000 and conn.raddr.ip == NODE1_LISTEN_ADDRESS:
+                        node2_conn_on_wrong_ip = conn
+                        logger.debug("Node2 conn: {}".format(conn))
+                except AttributeError:
+                    pass
+            if not rebuild_thread.is_alive():
+                break
+        rebuild_thread.join(timeout=60)
+        if rebuild_thread.is_alive():
+            logger.error("Failed to join rebuild thread after 60 seconds")
+            raise
+        assert not node1_conn_on_wrong_ip and not node2_conn_on_wrong_ip
+
+def run_nodetool_in_thread(node, cmd):
+    node.nodetool(cmd)
 
 class TestDynamicEndpointSnitch(Tester):
     @pytest.mark.resource_intensive
