@@ -38,14 +38,12 @@ class TestDonwgradeTool(Tester):
 
         cluster.populate(2)
 
-        for node in cluster.nodelist():
-            node.set_configuration_options(values={'storage_compatibility_mode': 'NONE'})
-        # Forcing cluster version on purpose
-        # cluster.set_install_dir(version="github:apache/cassandra-2.2")
-        # self.install_nodetool_legacy_parsing()
+#        for node in cluster.nodelist():
+#            node.set_configuration_options(values={'storage_compatibility_mode': 'NONE'})
 
 
-        cluster.start()
+
+        cluster.start(jvm_args=["-Dcassandra.storage_compatibility_mode=NONE"])
 
         node1, node2 = cluster.nodelist()
 
@@ -63,7 +61,7 @@ class TestDonwgradeTool(Tester):
         assert_one(session, "SELECT * FROM ks.cf1 WHERE id=1", [1, 0])
 
         for node in cluster.nodelist():
-            self.downgrade(node, "github:apache/cassandra-4.0")
+            self.downgrade(node, "github:apache/cassandra-4.1")
 
         session = self.patient_cql_connection(node1)
 
@@ -202,7 +200,7 @@ class TestDonwgradeTool(Tester):
         env = ccmcommon.make_cassandra_env(cdir, node.get_path())
 
 
-        cmd_args = [node.get_tool('sstabledowngrade'), '-a']
+        cmd_args = [node.get_tool('sstabledowngrade'), '--all']
         p = subprocess.Popen(cmd_args, stderr=subprocess.PIPE, stdout=subprocess.PIPE, env=env)
         stdout, stderr = p.communicate()
         exit_status = p.returncode
@@ -216,9 +214,7 @@ class TestDonwgradeTool(Tester):
 
         logger.debug('Set new cassandra dir for {node}: {tag}'.format(**format_args))
         #pytest.set_trace()
-        node.set_install_dir(version='4.0', verbose=True)
-        self.install_nodetool_legacy_parsing()
-        self.fixture_dtest_setup.reinitialize_cluster_for_different_version()
+        node.set_install_dir(version=tag, verbose=True)
 
         #os.environ['CASSANDRA_DIR'] = self.dtest_config.cassandra_dir
 
@@ -228,33 +224,22 @@ class TestDonwgradeTool(Tester):
         # self.install_nodetool_legacy_parsing()
         #self.fixture_dtest_setup.reinitialize_cluster_for_different_version()
         #self.set_node_to_current_version(node)
-        version = os.environ.get('CASSANDRA_VERSION')
-        print(version)
+        #version = os.environ.get('CASSANDRA_VERSION')
+        #print(version)
 
 
         # Restart node on new version
         logger.debug('Starting {node} on new version ({tag})'.format(**format_args))
-        # Setup log4j / logback again (necessary moving from 2.0 -> 2.1):
-        node.set_log_level("INFO")
-        print(self.get_node_versions())
-        print(node.get_cassandra_version())
-        os.environ['CASSANDRA_VERSION']  = '4.0.13'
-        node._cassandra_version = node.get_cassandra_version()
-        print(node._cassandra_version)
-        #self.cassandra_version = '4.0.13'
-        node.get_base_cassandra_version()
-
-        self.fixture_dtest_setup.reinitialize_cluster_for_different_version()
-
+        print("starttttttttttttttttttttttttttttttttttttttttttttttt")
         node.start(wait_for_binary_proto=True)
 
 
 
 
-
-        running40 = node.get_base_cassandra_version() <= 4.99
-        print(node.get_base_cassandra_version())
-        print(running40)
+        #
+        # running40 = node.get_base_cassandra_version() <= 4.99
+        # print(node.get_base_cassandra_version())
+        # print(running40)
         #assert running40
 
     def get_node_versions(self):
