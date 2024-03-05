@@ -173,6 +173,7 @@ class TestGossipingPropertyFileSnitch(Tester):
     def test_cross_dc_streaming_with_preferred(self):
         """
         Check that streaming does not use the preferred_ip cross-dc
+        @jira_ticket CASSANDRA-18657
         """
         NODE1_LISTEN_ADDRESS = '127.0.0.1'
         NODE1_BROADCAST_ADDRESS = '127.0.0.3'
