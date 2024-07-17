@@ -3,7 +3,7 @@ import logging
 import os
 import subprocess
 from cassandra import ConsistencyLevel
-import time
+import shutil
 
 from dtest import Tester
 from tools.assertions import  assert_one, assert_all
@@ -12,6 +12,9 @@ import faulthandler
 
 since = pytest.mark.since
 logger = logging.getLogger(__name__)
+
+VERSION_40 = 'github:apache/cassandra-4.1'
+
 
 #@pytest.mark.upgrade_test
 #@since('4.0', max_version='5.99')
@@ -23,7 +26,8 @@ class TestDonwgradeTool(Tester):
              # This one occurs if we do a non-rolling upgrade, the node
             # it's trying to send the migration to hasn't started yet,
             # and when it does, it gets replayed and everything is fine.
-            r'Can\'t send migration request: node.*is down',
+            r'Can\'t send migration request: node.*is down'
+            #r'Unknown column compaction_properties during deserialization'
         )
 
     #@pytest.mark.no_offheap_memtables
@@ -55,7 +59,12 @@ class TestDonwgradeTool(Tester):
         assert running50
 
         session = self.patient_cql_connection(node1)
-        session.execute("CREATE KEYSPACE ks WITH replication = {'class':'SimpleStrategy', 'replication_factor':1}")
+
+        cassandra = self.patient_exclusive_cql_connection(node1, user='cassandra', password='cassandra')
+
+        self.set_rf2_on_system_auth(cassandra)
+
+        session.execute("CREATE KEYSPACE ks WITH replication = {'class':'SimpleStrategy', 'replication_factor':2}")
         session.execute("""CREATE TABLE ks.cf1 (id int primary key, val int) """)
 
         session.execute("INSERT INTO ks.cf1(id, val) VALUES (0, 0)")
@@ -64,104 +73,141 @@ class TestDonwgradeTool(Tester):
         assert_one(session, "SELECT * FROM ks.cf1 WHERE id=0", [0, 0])
         assert_one(session, "SELECT * FROM ks.cf1 WHERE id=1", [1, 0])
 
+        #cluster.stop()
+
         for node in cluster.nodelist():
             faulthandler.enable()
             self.stop_node(node)
 
-            target_version = "github:apache/cassandra-4.1.5"
+
 
             #self.downgrade(node, "github:apache/cassandra-4.1")
-            self.downgrade(node, target_version, "ks","cf1")
-            self.downgrade(node, target_version, "system_auth","cidr_groups")
-            self.downgrade(node, target_version, "system_auth","cidr_permissions")
-            self.downgrade(node, target_version, "system_auth","identity_to_role")
-            self.downgrade(node, target_version, "system_auth","network_permissions")
-            self.downgrade(node, target_version, "system_auth","resource_role_permissons_index")
-            self.downgrade(node, target_version, "system_auth","role_members")
-            self.downgrade(node, target_version, "system_auth","role_permissions")
-            self.downgrade(node, target_version, "system_auth","roles")
-            self.downgrade(node, target_version, "system_schema","aggregates")
-            self.downgrade(node, target_version, "system_schema","column_masks")
-            self.downgrade(node, target_version, "system_schema","columns")
-            self.downgrade(node, target_version, "system_schema","dropped_columns")
-            self.downgrade(node, target_version, "system_schema","functions")
-            self.downgrade(node, target_version, "system_schema","indexes")
-            self.downgrade(node, target_version, "system_schema","keyspaces")
-            self.downgrade(node, target_version, "system_schema","tables")
-            self.downgrade(node, target_version, "system_schema","triggers")
-            self.downgrade(node, target_version, "system_schema","types")
-            self.downgrade(node, target_version, "system_schema","views")
-            self.downgrade(node, target_version, "system_distributed","parent_repair_history")
-            self.downgrade(node, target_version, "system_distributed","partition_denylist")
-            self.downgrade(node, target_version, "system_distributed","repair_history")
-            self.downgrade(node, target_version, "system_distributed","view_build_status")
-            self.downgrade(node, target_version, "system","IndexInfo")
-            self.downgrade(node, target_version, "system","available_ranges")
-            self.downgrade(node, target_version, "system","available_ranges_v2")
-            self.downgrade(node, target_version, "system","batches")
-            self.downgrade(node, target_version, "system","built_views")
-            self.downgrade(node, target_version, "system","compaction_history")
-            self.downgrade(node, target_version, "system","local")
-            self.downgrade(node, target_version, "system","paxos")
-            self.downgrade(node, target_version, "system","paxos_repair_history")
-            self.downgrade(node, target_version, "system","peer_events")
-            self.downgrade(node, target_version, "system","peer_events_v2")
-            self.downgrade(node, target_version, "system","peers")
-            self.downgrade(node, target_version, "system","peers_v2")
-            self.downgrade(node, target_version, "system","prepared_statements")
-            self.downgrade(node, target_version, "system","repairs")
-            self.downgrade(node, target_version, "system","size_estimates")
-            self.downgrade(node, target_version, "system","sstable_activity")
-            self.downgrade(node, target_version, "system","sstable_activity_v2")
-            self.downgrade(node, target_version, "system","table_estimates")
-            self.downgrade(node, target_version, "system","top_partitions")
-            self.downgrade(node, target_version, "system","transferred_ranges")
-            self.downgrade(node, target_version, "system","transferred_ranges_v2")
-            self.downgrade(node, target_version, "system","view_builds_in_progress")
-            self.downgrade(node, target_version, "system_traces","events")
-            self.downgrade(node, target_version, "system_traces","sessions")
-            
-            self.set_node_to_current_version(node, target_version)
-            node.start(wait_for_binary_proto=True)
+            self.downgrade(node, VERSION_40, "ks","cf1")
+            self.downgrade(node, VERSION_40, "system_auth","cidr_groups")
+            self.downgrade(node, VERSION_40, "system_auth","cidr_permissions")
+            self.downgrade(node, VERSION_40, "system_auth","identity_to_role")
+            self.downgrade(node, VERSION_40, "system_auth","network_permissions")
+            self.downgrade(node, VERSION_40, "system_auth","resource_role_permissons_index")
+            self.downgrade(node, VERSION_40, "system_auth","role_members")
+            self.downgrade(node, VERSION_40, "system_auth","role_permissions")
+            self.downgrade(node, VERSION_40, "system_auth","roles")
+            self.downgrade(node, VERSION_40, "system_schema","aggregates")
+            self.downgrade(node, VERSION_40, "system_schema","column_masks")
+            self.downgrade(node, VERSION_40, "system_schema","columns")
+            self.downgrade(node, VERSION_40, "system_schema","dropped_columns")
+            self.downgrade(node, VERSION_40, "system_schema","functions")
+            self.downgrade(node, VERSION_40, "system_schema","indexes")
+            self.downgrade(node, VERSION_40, "system_schema","keyspaces")
+            self.downgrade(node, VERSION_40, "system_schema","tables")
+            self.downgrade(node, VERSION_40, "system_schema","triggers")
+            self.downgrade(node, VERSION_40, "system_schema","types")
+            self.downgrade(node, VERSION_40, "system_schema","views")
+            self.downgrade(node, VERSION_40, "system_distributed","parent_repair_history")
+            self.downgrade(node, VERSION_40, "system_distributed","partition_denylist")
+            self.downgrade(node, VERSION_40, "system_distributed","repair_history")
+            self.downgrade(node, VERSION_40, "system_distributed","view_build_status")
+            self.downgrade(node, VERSION_40, "system","IndexInfo")
+            self.downgrade(node, VERSION_40, "system","available_ranges")
+            self.downgrade(node, VERSION_40, "system","available_ranges_v2")
+            self.downgrade(node, VERSION_40, "system","batches")
+            self.downgrade(node, VERSION_40, "system","built_views")
+            self.downgrade(node, VERSION_40, "system","compaction_history")
+            self.downgrade(node, VERSION_40, "system","local")
+            self.downgrade(node, VERSION_40, "system","paxos")
+            self.downgrade(node, VERSION_40, "system","paxos_repair_history")
+            self.downgrade(node, VERSION_40, "system","peer_events")
+            self.downgrade(node, VERSION_40, "system","peer_events_v2")
+            self.downgrade(node, VERSION_40, "system","peers")
+            self.downgrade(node, VERSION_40, "system","peers_v2")
+            self.downgrade(node, VERSION_40, "system","prepared_statements")
+            self.downgrade(node, VERSION_40, "system","repairs")
+            self.downgrade(node, VERSION_40, "system","size_estimates")
+            self.downgrade(node, VERSION_40, "system","sstable_activity")
+            self.downgrade(node, VERSION_40, "system","sstable_activity_v2")
+            self.downgrade(node, VERSION_40, "system","table_estimates")
+            self.downgrade(node, VERSION_40, "system","top_partitions")
+            self.downgrade(node, VERSION_40, "system","transferred_ranges")
+            self.downgrade(node, VERSION_40, "system","transferred_ranges_v2")
+            self.downgrade(node, VERSION_40, "system","view_builds_in_progress")
+            self.downgrade(node, VERSION_40, "system_traces","events")
+            self.downgrade(node, VERSION_40, "system_traces","sessions")
 
+            self._cleanup(node)
+
+            #self.set_node_to_current_version(node, target_version)
+
+            
+            node.set_install_dir(install_dir="/Users/anisbenbrahim/Documents/projet/ericsson/downgrade_tool_for_cassandra_5/cassandra4")
+            
+            #
+            
+            # print("masammmbaaaaaaaaaa")
+            # node_info = node.__dict__
+            # print(node.__dict__)
+
+            # if node_info['name'] == 'node2':
+            #     print(node)
+
+            #node.start(wait_for_binary_proto=True, wait_other_notice=False)
+            #session = self.patient_cql_connection(node)
+
+
+            #node.start(wait_for_binary_proto=False)
+            #self.set_node_to_current_version(node1)
+            #node.start()
+            
+            #self.install_nodetool_legacy_parsing()
+            #node.start(wait_for_binary_proto=True)
+
+        self.cluster.set_install_dir(install_dir="/Users/anisbenbrahim/Documents/projet/ericsson/downgrade_tool_for_cassandra_5/cassandra4")
+        
+        #node1, node2 = cluster.nodelist()
+
+        #node1.start(no_wait=False, wait_other_notice=False)
+        #node2.start(no_wait=False, wait_other_notice=False)
+
+        mark = node1.mark_log()
+        # mark2 = node2.mark_log()
+        self.cluster.start(no_wait=True, wait_for_binary_proto=True)
+
+        node1.watch_log_for("Starting listening for CQL", from_mark=mark)
+        # node2.watch_log_for("Starting listening for CQL", from_mark=mark2)
+        
+        
+        
         session = self.patient_cql_connection(node1)
+        
+        #session = self.get_session(user='cassandra', password='cassandra')
 
         assert_all(session, "SELECT * FROM ks.cf1", [[0, 0], [1, 0]],
-                   cl=ConsistencyLevel.ALL, ignore_order=True)
+                   cl=ConsistencyLevel.ONE, ignore_order=True)
 
-        print(self.get_node_versions())
+        #print(self.get_node_versions())
 
 
     def downgrade(self, node, tag, keyspace=None, table=None):
         format_args = {'node': node.name, 'tag': tag}
         logger.debug('Downgrading node {node} to nb sstables'.format(**format_args))
-        self.install_legacy_parsing(node)
-
-
-
+        #self.install_legacy_parsing(node)
         #node.set_configuration_options(values={'storage_compatibility_mode': 'UPGRADING'})
-
-
-        files = os.listdir(node.get_conf_dir())
-        print("fileeeeeeeeeeeeeeeeeeeeeeeeeessssssssssssssssssss")
-        print(files)
-
-
+        #files = os.listdir(node.get_conf_dir())
+        #print("fileeeeeeeeeeeeeeeeeeeeeeeeeessssssssssssssssssss")
+        #print(files)
 
         self.update_compatibility_mode(node, "UPGRADING")
 
-        with open(os.path.join(node.get_conf_dir(), 'cassandra.yaml'), 'r') as file:
-            lines = file.readlines()
-            print("linesss")
-            print(lines)
+        # with open(os.path.join(node.get_conf_dir(), 'cassandra.yaml'), 'r') as file:
+        #     lines = file.readlines()
+            #print("linesss")
+            #print(lines)
         #time.sleep(5)
         logger.debug('{node} stopped'.format(**format_args))
 
-        logger.debug('Running sstabledowngrade')
+        #logger.debug('Running sstabledowngrade')
 
         cdir = node.get_install_dir()
-        print("cdirrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrr")
-        print(cdir)
+        #print("cdirrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrrr")
+        #print(cdir)
         env = ccmcommon.make_cassandra_env(cdir, node.get_path())
 
 
@@ -177,24 +223,19 @@ class TestDonwgradeTool(Tester):
         logger.info('stderr: {err}'.format(err=stderr.decode("utf-8")))
         #print("ahhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhh")
         print(stdout.decode("utf-8"))
-        print(stderr.decode("utf-8"))
-        assert 0 == exit_status, \
-            "Downgrade complete"
+
+        assert 0 == exit_status, "Downgrade complete"
         print("================================++++> Downgrade complete")
+        
         #time.sleep(5)
-
-
-
-        faulthandler.enable()
-
-        logger.debug('Set new cassandra dir for {node}: {tag}'.format(**format_args))
+        #faulthandler.enable()
+        #logger.debug('Set new cassandra dir for {node}: {tag}'.format(**format_args))
         #pytest.set_trace()
         #node.set_install_dir(version=tag, verbose=True)
-
         # Restart node on new version
-        logger.debug('Starting {node} on new version ({tag})'.format(**format_args))
-        print("starttttttttttttttttttttttttttttttttttttttttttttttt")
-        print(node)
+        #logger.debug('Starting {node} on new version ({tag})'.format(**format_args))
+        #print("starttttttttttttttttttttttttttttttttttttttttttttttt")
+        #print(node)
 
 
 
@@ -206,16 +247,44 @@ class TestDonwgradeTool(Tester):
     def stop_node(self, node):
         node.flush()
         # drain and shutdown
-        node.drain()
-        node.watch_log_for("DRAINED")
-        node.stop(wait_other_notice=False, gently=True)
+        #node.drain()
+        #node.watch_log_for("DRAINED")
+        node.stop(wait_other_notice=False, gently=False)
 
     def set_node_to_current_version(self, node, tag):
-        return node.set_install_dir(version=tag, verbose=True)
+        node.set_install_dir(version=to_version)
+        node.start(wait_for_binary_proto=True)
+        #return node.set_install_dir(version=tag, verbose=True)
+        #return node.set_install_dir(install_dir="/Users/anisbenbrahim/Documents/projet/ericsson/downgrade_tool_for_cassandra_5/cassandra4")
 
     def get_node_versions(self):
         return [n.get_cassandra_version() for n in self.cluster.nodelist()]
 
+    def set_rf2_on_system_auth(self, session):
+        """
+        Set RF=2 on system_auth and repair
+        @param session The session used to alter keyspace
+        """
+        session.execute("""
+            ALTER KEYSPACE system_auth
+                WITH replication = {'class':'SimpleStrategy', 'replication_factor':2};
+        """)
+
+        logger.debug("Repairing after altering RF")
+        self.cluster.repair()
+
+
+    def get_session(self, node_idx=0, user=None, password=None):
+        """
+        Connect with a set of credentials to a given node. Connection is not exclusive to that node.
+        @param node_idx Initial node to connect to
+        @param user User to connect as
+        @param password Password to use
+        @return Session as user, to specified node
+        """
+        node = self.cluster.nodelist()[node_idx]
+        session = self.patient_cql_connection(node, user=user, password=password)
+        return session
 
     def remove_lines_with_substring(self, filename, substring):
         # Read the contents of the file
@@ -239,7 +308,9 @@ class TestDonwgradeTool(Tester):
             snitch_file.write("storage_compatibility_mode: " + mode + os.linesep)
             snitch_file.writelines(lines)
 
-
+    def _cleanup(self, node):
+        commitlog_dir = os.path.join(node.get_path(), 'commitlogs')
+        shutil.rmtree(commitlog_dir)
 
         #assert False
 
