@@ -476,6 +476,71 @@ class TestDonwgradeTool(Tester):
         meta = session.cluster.metadata.keyspaces['ks'].tables['cf1']
         assert 'test comment' == meta.options['comment']
 
+
+    def test_downgrade_change_clustering_name_column(self):
+        """
+        Tests behavior of compression property crc_check_chance after upgrade to 3.0,
+        when it was promoted to a top-level property
+
+        @jira_ticket CASSANDRA-9839
+        """
+        cluster = self.cluster
+
+        ## need to change last casandra.yaml to none
+
+        cluster.populate(2)
+
+        for node in cluster.nodelist():
+            self.update_compatibility_mode(node, "NONE")
+            
+        cluster.start()
+
+        node1, node2 = cluster.nodelist()
+
+        running50 = node1.get_base_cassandra_version() >= 5.0
+        assert running50
+
+        session = self.patient_cql_connection(node1)
+
+        cassandra = self.patient_exclusive_cql_connection(node1, user='cassandra', password='cassandra')
+
+        self.set_rf2_on_system_auth(cassandra)
+
+        session.execute("CREATE KEYSPACE ks WITH replication = {'class':'SimpleStrategy', 'replication_factor':2}")
+        session.execute("""CREATE TABLE ks.cf1 (id int, c1 text, val int, PRIMARY KEY (id, c1)) """)
+
+        session.execute("INSERT INTO ks.cf1(id, c1, val) VALUES (0, 'a1', 0)")
+        session.execute("INSERT INTO ks.cf1(id, c1, val) VALUES (1, 'a2', 0)")
+
+        assert_one(session, "SELECT id, val, c1 FROM ks.cf1 WHERE id=0", [0, 0, 'a1'])
+        assert_one(session, "SELECT id, val, c1 FROM ks.cf1 WHERE id=1", [1, 0, 'a2'])
+
+        session.execute("ALTER TABLE ks.cf1 RENAME c1 TO r1 ")
+        assert_one(session, "SELECT id, r1, val FROM ks.cf1 WHERE id=0", [0, 'a1', 0])
+
+
+        for node in cluster.nodelist():
+            faulthandler.enable()
+            self.stop_node(node)
+            self.downgrade(node, VERSION_40, "ks","cf1")
+            self.downgrade_system_keyspaces(node, VERSION_40)
+            self._cleanup(node)
+            node.set_install_dir(version="4.1.5")
+
+
+        self.cluster.set_install_dir(version="4.1.5")
+        
+
+        mark = node1.mark_log()
+        
+        self.cluster.start(no_wait=True, wait_for_binary_proto=True)
+
+        node1.watch_log_for("Starting listening for CQL", from_mark=mark)
+
+        session = self.patient_cql_connection(node1)
+
+        assert_one(session, "SELECT id, r1, val FROM ks.cf1 WHERE id=0", [0, 'a1', 0])
+
         # session.execute("INSERT INTO ks.test (key, column1, column2, column3, value) VALUES ('foo', 4, 3, 2, 'bar')")
         # session.execute("ALTER TABLE test RENAME column1 TO foo1 AND column2 TO foo2 AND column3 TO foo3")
         # assert_one(session, "SELECT foo1, foo2, foo3 FROM test", [4, 3, 2])
