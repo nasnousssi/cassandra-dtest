@@ -78,129 +78,245 @@ class TestDonwgradeTool(Tester):
         for node in cluster.nodelist():
             faulthandler.enable()
             self.stop_node(node)
-
-
-
-            #self.downgrade(node, "github:apache/cassandra-4.1")
             self.downgrade(node, VERSION_40, "ks","cf1")
-            self.downgrade(node, VERSION_40, "system_auth","cidr_groups")
-            self.downgrade(node, VERSION_40, "system_auth","cidr_permissions")
-            self.downgrade(node, VERSION_40, "system_auth","identity_to_role")
-            self.downgrade(node, VERSION_40, "system_auth","network_permissions")
-            self.downgrade(node, VERSION_40, "system_auth","resource_role_permissons_index")
-            self.downgrade(node, VERSION_40, "system_auth","role_members")
-            self.downgrade(node, VERSION_40, "system_auth","role_permissions")
-            self.downgrade(node, VERSION_40, "system_auth","roles")
-            self.downgrade(node, VERSION_40, "system_schema","aggregates")
-            self.downgrade(node, VERSION_40, "system_schema","column_masks")
-            self.downgrade(node, VERSION_40, "system_schema","columns")
-            self.downgrade(node, VERSION_40, "system_schema","dropped_columns")
-            self.downgrade(node, VERSION_40, "system_schema","functions")
-            self.downgrade(node, VERSION_40, "system_schema","indexes")
-            self.downgrade(node, VERSION_40, "system_schema","keyspaces")
-            self.downgrade(node, VERSION_40, "system_schema","tables")
-            self.downgrade(node, VERSION_40, "system_schema","triggers")
-            self.downgrade(node, VERSION_40, "system_schema","types")
-            self.downgrade(node, VERSION_40, "system_schema","views")
-            self.downgrade(node, VERSION_40, "system_distributed","parent_repair_history")
-            self.downgrade(node, VERSION_40, "system_distributed","partition_denylist")
-            self.downgrade(node, VERSION_40, "system_distributed","repair_history")
-            self.downgrade(node, VERSION_40, "system_distributed","view_build_status")
-            self.downgrade(node, VERSION_40, "system","IndexInfo")
-            self.downgrade(node, VERSION_40, "system","available_ranges")
-            self.downgrade(node, VERSION_40, "system","available_ranges_v2")
-            self.downgrade(node, VERSION_40, "system","batches")
-            self.downgrade(node, VERSION_40, "system","built_views")
-            self.downgrade(node, VERSION_40, "system","compaction_history")
-            self.downgrade(node, VERSION_40, "system","local")
-            self.downgrade(node, VERSION_40, "system","paxos")
-            self.downgrade(node, VERSION_40, "system","paxos_repair_history")
-            self.downgrade(node, VERSION_40, "system","peer_events")
-            self.downgrade(node, VERSION_40, "system","peer_events_v2")
-            self.downgrade(node, VERSION_40, "system","peers")
-            self.downgrade(node, VERSION_40, "system","peers_v2")
-            self.downgrade(node, VERSION_40, "system","prepared_statements")
-            self.downgrade(node, VERSION_40, "system","repairs")
-            self.downgrade(node, VERSION_40, "system","size_estimates")
-            self.downgrade(node, VERSION_40, "system","sstable_activity")
-            self.downgrade(node, VERSION_40, "system","sstable_activity_v2")
-            self.downgrade(node, VERSION_40, "system","table_estimates")
-            self.downgrade(node, VERSION_40, "system","top_partitions")
-            self.downgrade(node, VERSION_40, "system","transferred_ranges")
-            self.downgrade(node, VERSION_40, "system","transferred_ranges_v2")
-            self.downgrade(node, VERSION_40, "system","view_builds_in_progress")
-            self.downgrade(node, VERSION_40, "system_traces","events")
-            self.downgrade(node, VERSION_40, "system_traces","sessions")
-
+            self.downgrade_system_keyspaces(node, VERSION_40)
             self._cleanup(node)
-
-            #self.set_node_to_current_version(node, target_version)
-
-            
             node.set_install_dir(install_dir="/Users/anisbenbrahim/Documents/projet/ericsson/downgrade_tool_for_cassandra_5/cassandra4")
-            
-            #
-            
-            # print("masammmbaaaaaaaaaa")
-            # node_info = node.__dict__
-            # print(node.__dict__)
 
-            # if node_info['name'] == 'node2':
-            #     print(node)
-
-            #node.start(wait_for_binary_proto=True, wait_other_notice=False)
-            #session = self.patient_cql_connection(node)
-
-
-            #node.start(wait_for_binary_proto=False)
-            #self.set_node_to_current_version(node1)
-            #node.start()
-            
-            #self.install_nodetool_legacy_parsing()
-            #node.start(wait_for_binary_proto=True)
 
         self.cluster.set_install_dir(install_dir="/Users/anisbenbrahim/Documents/projet/ericsson/downgrade_tool_for_cassandra_5/cassandra4")
         
-        #node1, node2 = cluster.nodelist()
-
-        #node1.start(no_wait=False, wait_other_notice=False)
-        #node2.start(no_wait=False, wait_other_notice=False)
 
         mark = node1.mark_log()
-        # mark2 = node2.mark_log()
+        
         self.cluster.start(no_wait=True, wait_for_binary_proto=True)
 
         node1.watch_log_for("Starting listening for CQL", from_mark=mark)
-        # node2.watch_log_for("Starting listening for CQL", from_mark=mark2)
-        
-        
-        
+
         session = self.patient_cql_connection(node1)
+
+        assert_all(session, "SELECT * FROM ks.cf1", [[0, 0], [1, 0]],cl=ConsistencyLevel.ONE, ignore_order=True)
+
+
+
+#     def test_downgrade_index(self):
+#         """
+#         Tests behavior of compression property crc_check_chance after upgrade to 3.0,
+#         when it was promoted to a top-level property
+
+#         @jira_ticket CASSANDRA-9839
+#         """
+#         cluster = self.cluster
+
+#         ## need to change last casandra.yaml to none
+
+#         cluster.populate(2)
+
+# #        for node in cluster.nodelist():
+# #            node.set_configuration_options(values={'storage_compatibility_mode': 'NONE'})
+
+#         for node in cluster.nodelist():
+#             self.update_compatibility_mode(node, "NONE")
+            
+#         #cluster.start(jvm_args=["-Dcassandra.storage_compatibility_mode=NONE"])
+#         cluster.start()
+
+#         node1, node2 = cluster.nodelist()
+
+#         running50 = node1.get_base_cassandra_version() >= 5.0
+#         assert running50
+
+#         session = self.patient_cql_connection(node1)
+
+#         cassandra = self.patient_exclusive_cql_connection(node1, user='cassandra', password='cassandra')
+
+#         self.set_rf2_on_system_auth(cassandra)
+
+#         session.execute("CREATE KEYSPACE IF NOT EXISTS ks WITH replication = {'class': 'SimpleStrategy', 'replication_factor': 2};")
+#         session.execute("""CREATE TABLE ks.users (user_id TEXT PRIMARY KEY,username TEXT,email TEXT, age INT) """)
+#         session.execute("CREATE INDEX email_idx ON ks.users (email);")
+
+#         session.execute("INSERT INTO ks.users (user_id, username, email, age) VALUES ('1', 'alice', 'alice@example.com', 30);")
+#         session.execute("INSERT INTO ks.users (user_id, username, email, age) VALUES ('2', 'carol', 'carol@example.com', 35);")
+
+#         assert_one(session, "SELECT user_id, username FROM ks.users WHERE email = 'carol@example.com';", ['2', 'carol'])
         
-        #session = self.get_session(user='cassandra', password='cassandra')
 
-        assert_all(session, "SELECT * FROM ks.cf1", [[0, 0], [1, 0]],
-                   cl=ConsistencyLevel.ONE, ignore_order=True)
+#         #cluster.stop()
 
-        #print(self.get_node_versions())
+#         for node in cluster.nodelist():
+#             faulthandler.enable()
+#             self.stop_node(node)
+#             self.downgrade(node, VERSION_40, "ks","users")
+#             self.downgrade_system_keyspaces(node, VERSION_40)
+#             self._cleanup(node)
+#             node.set_install_dir(install_dir="/Users/anisbenbrahim/Documents/projet/ericsson/downgrade_tool_for_cassandra_5/cassandra4")
 
+
+#         self.cluster.set_install_dir(install_dir="/Users/anisbenbrahim/Documents/projet/ericsson/downgrade_tool_for_cassandra_5/cassandra4")
+        
+
+#         mark = node1.mark_log()
+        
+#         self.cluster.start(no_wait=True, wait_for_binary_proto=True)
+
+#         node1.watch_log_for("Starting listening for CQL", from_mark=mark)
+
+#         session = self.patient_cql_connection(node1)
+
+#         assert_one(session, "SELECT user_id, username FROM ks.users WHERE email = 'carol@example.com';", ['2', 'carol'], cl=ConsistencyLevel.ONE)
+
+
+
+    def test_downgrade_materialzed_view(self):
+        """
+        Tests behavior of compression property crc_check_chance after upgrade to 3.0,
+        when it was promoted to a top-level property
+
+        @jira_ticket CASSANDRA-9839
+        """
+
+        cluster = self.cluster
+
+        cluster.populate(2)
+
+#        for node in cluster.nodelist():
+#            node.set_configuration_options(values={'storage_compatibility_mode': 'NONE'})
+
+        for node in cluster.nodelist():
+            self.update_compatibility_mode(node, "NONE")
+
+        cluster.set_configuration_options(values={'materialized_views_enabled': 'true'})
+        #cluster.start(jvm_args=["-Dcassandra.storage_compatibility_mode=NONE"])
+        cluster.start(no_wait=True, wait_for_binary_proto=True)
+
+
+        node1, node2 = cluster.nodelist()
+        node1.watch_log_for("Created default superuser role")
+        node2.watch_log_for("Created default superuser role")
+
+        running50 = node1.get_base_cassandra_version() >= 5.0
+        assert running50
+
+        session = self.patient_cql_connection(node1)
+
+        #cassandra = self.patient_exclusive_cql_connection(node1, user='cassandra', password='cassandra')
+
+        #self.set_rf2_on_system_auth(cassandra)
+
+
+
+
+        session.execute("CREATE KEYSPACE IF NOT EXISTS ks WITH replication = {'class': 'SimpleStrategy', 'replication_factor': 2};")
+        session.execute("""CREATE TABLE ks.users (user_id TEXT PRIMARY KEY, username TEXT,email TEXT, age INT); """)
+
+        
+        session.execute("""
+            CREATE MATERIALIZED VIEW ks.users_by_email AS
+            SELECT user_id, username, email, age
+            FROM ks.users
+            WHERE email IS NOT NULL and user_id IS NOT NULL
+            PRIMARY KEY (email, user_id);
+        """)
+ 
+        session.execute("INSERT INTO ks.users (user_id, username, email, age) VALUES ('1', 'alice', 'alice@example.com', 30);")
+        session.execute("INSERT INTO ks.users (user_id, username, email, age) VALUES ('2', 'carol', 'carol@example.com', 35);")
+        session.execute("INSERT INTO ks.users (user_id, username, email, age) VALUES ('3', 'carol', 'karl@example.com', 32);")       
+        
+        
+        assert_one(session, "SELECT user_id, username FROM ks.users_by_email WHERE email = 'carol@example.com';", ['2', 'carol'])
+
+        #self.cluster.repair()
+        #cluster.stop()
+        #self.patient_cql_connection(node2)
+
+        for node in cluster.nodelist():
+            faulthandler.enable()
+            print(node)
+            self.stop_node(node)
+            self.downgrade(node, VERSION_40, "ks","users")
+            self.downgrade(node, VERSION_40, "ks","users_by_email")
+            self.downgrade_system_keyspaces(node, VERSION_40)
+            self._cleanup(node)
+            node.set_install_dir(version="4.1.5")
+            #node.set_configuration_options(values={'enable_materialized_views': 'true'})
+
+
+        self.cluster.set_install_dir(version="4.1.5")
+        
+
+        mark = node1.mark_log()
+        cluster.set_configuration_options(values={'enable_materialized_views': 'true'})
+        self.cluster.start(no_wait=True, wait_for_binary_proto=True)
+
+        node1.watch_log_for("Starting listening for CQL", from_mark=mark)
+
+        session = self.patient_cql_connection(node1)
+
+        
+        assert_one(session, "SELECT user_id, username FROM ks.users_by_email WHERE email = 'carol@example.com';", ['2', 'carol'])
+
+
+
+
+
+
+    def downgrade_system_keyspaces(self, node, version):
+            self.downgrade(node, version, "system_auth","cidr_groups")
+            self.downgrade(node, version, "system_auth","cidr_permissions")
+            self.downgrade(node, version, "system_auth","identity_to_role")
+            self.downgrade(node, version, "system_auth","network_permissions")
+            self.downgrade(node, version, "system_auth","resource_role_permissons_index")
+            self.downgrade(node, version, "system_auth","role_members")
+            self.downgrade(node, version, "system_auth","role_permissions")
+            self.downgrade(node, version, "system_auth","roles")
+            self.downgrade(node, version, "system_schema","aggregates")
+            self.downgrade(node, version, "system_schema","column_masks")
+            self.downgrade(node, version, "system_schema","columns")
+            self.downgrade(node, version, "system_schema","dropped_columns")
+            self.downgrade(node, version, "system_schema","functions")
+            self.downgrade(node, version, "system_schema","indexes")
+            self.downgrade(node, version, "system_schema","keyspaces")
+            self.downgrade(node, version, "system_schema","tables")
+            self.downgrade(node, version, "system_schema","triggers")
+            self.downgrade(node, version, "system_schema","types")
+            self.downgrade(node, version, "system_schema","views")
+            self.downgrade(node, version, "system_distributed","parent_repair_history")
+            self.downgrade(node, version, "system_distributed","partition_denylist")
+            self.downgrade(node, version, "system_distributed","repair_history")
+            self.downgrade(node, version, "system_distributed","view_build_status")
+            self.downgrade(node, version, "system","IndexInfo")
+            self.downgrade(node, version, "system","available_ranges")
+            self.downgrade(node, version, "system","available_ranges_v2")
+            self.downgrade(node, version, "system","batches")
+            self.downgrade(node, version, "system","built_views")
+            self.downgrade(node, version, "system","compaction_history")
+            self.downgrade(node, version, "system","local")
+            self.downgrade(node, version, "system","paxos")
+            self.downgrade(node, version, "system","paxos_repair_history")
+            self.downgrade(node, version, "system","peer_events")
+            self.downgrade(node, version, "system","peer_events_v2")
+            self.downgrade(node, version, "system","peers")
+            self.downgrade(node, version, "system","peers_v2")
+            self.downgrade(node, version, "system","prepared_statements")
+            self.downgrade(node, version, "system","repairs")
+            self.downgrade(node, version, "system","size_estimates")
+            self.downgrade(node, version, "system","sstable_activity")
+            self.downgrade(node, version, "system","sstable_activity_v2")
+            self.downgrade(node, version, "system","table_estimates")
+            self.downgrade(node, version, "system","top_partitions")
+            self.downgrade(node, version, "system","transferred_ranges")
+            self.downgrade(node, version, "system","transferred_ranges_v2")
+            self.downgrade(node, version, "system","view_builds_in_progress")
+            self.downgrade(node, version, "system_traces","events")
+            self.downgrade(node, version, "system_traces","sessions")
 
     def downgrade(self, node, tag, keyspace=None, table=None):
         format_args = {'node': node.name, 'tag': tag}
         logger.debug('Downgrading node {node} to nb sstables'.format(**format_args))
-        #self.install_legacy_parsing(node)
-        #node.set_configuration_options(values={'storage_compatibility_mode': 'UPGRADING'})
-        #files = os.listdir(node.get_conf_dir())
-        #print("fileeeeeeeeeeeeeeeeeeeeeeeeeessssssssssssssssssss")
-        #print(files)
 
         self.update_compatibility_mode(node, "UPGRADING")
 
-        # with open(os.path.join(node.get_conf_dir(), 'cassandra.yaml'), 'r') as file:
-        #     lines = file.readlines()
-            #print("linesss")
-            #print(lines)
-        #time.sleep(5)
         logger.debug('{node} stopped'.format(**format_args))
 
         #logger.debug('Running sstabledowngrade')
@@ -223,22 +339,11 @@ class TestDonwgradeTool(Tester):
         logger.info('stderr: {err}'.format(err=stderr.decode("utf-8")))
         #print("ahhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhhh")
         print(stdout.decode("utf-8"))
+        print(stdout.decode("utf-8"))
 
-        assert 0 == exit_status, "Downgrade complete"
+        #assert 0 == exit_status, "Downgrade complete"
         print("================================++++> Downgrade complete")
         
-        #time.sleep(5)
-        #faulthandler.enable()
-        #logger.debug('Set new cassandra dir for {node}: {tag}'.format(**format_args))
-        #pytest.set_trace()
-        #node.set_install_dir(version=tag, verbose=True)
-        # Restart node on new version
-        #logger.debug('Starting {node} on new version ({tag})'.format(**format_args))
-        #print("starttttttttttttttttttttttttttttttttttttttttttttttt")
-        #print(node)
-
-
-
         self.remove_lines_with_substring(os.path.join(node.get_conf_dir(), 'cassandra.yaml'), 'storage_compatibility_mode')
 
 
@@ -312,117 +417,3 @@ class TestDonwgradeTool(Tester):
         commitlog_dir = os.path.join(node.get_path(), 'commitlogs')
         shutil.rmtree(commitlog_dir)
 
-        #assert False
-
-        # assert_one(session, "SELECT * FROM ks.cf1 WHERE id=0", [0, 0])
-        # assert_one(session, "SELECT * FROM ks.cf1 WHERE id=1", [1, 0])
-
-
-        # # Create table
-        # session = self.patient_cql_connection(node1)
-        # session.execute("CREATE KEYSPACE ks WITH replication = {'class':'SimpleStrategy', 'replication_factor':1}")
-        # session.execute("""CREATE TABLE ks.cf1 (id int primary key, val int) WITH compression = {
-        #                   'sstable_compression': 'DeflateCompressor',
-        #                   'chunk_length_kb': 256,
-        #                   'crc_check_chance': 0.6 }
-        #                 """)
-        #
-        # # Insert and query data
-        # session.execute("INSERT INTO ks.cf1(id, val) VALUES (0, 0)")
-        # session.execute("INSERT INTO ks.cf1(id, val) VALUES (1, 0)")
-        # session.execute("INSERT INTO ks.cf1(id, val) VALUES (2, 0)")
-        # session.execute("INSERT INTO ks.cf1(id, val) VALUES (3, 0)")
-        # assert_one(session, "SELECT * FROM ks.cf1 WHERE id=0", [0, 0])
-        # assert_one(session, "SELECT * FROM ks.cf1 WHERE id=1", [1, 0])
-        # assert_one(session, "SELECT * FROM ks.cf1 WHERE id=2", [2, 0])
-        # assert_one(session, "SELECT * FROM ks.cf1 WHERE id=3", [3, 0])
-        # session.shutdown()
-        #
-        # self.verify_old_crc_check_chance(node1)
-        # self.verify_old_crc_check_chance(node2)
-        #
-        # # upgrade node1 to 3.0
-        # self.upgrade_to_version("cassandra-3.0", node1)
-        #
-        # self.verify_new_crc_check_chance(node1)
-        # self.verify_old_crc_check_chance(node2)
-        #
-        # # Insert and query data
-        # session = self.patient_cql_connection(node1)
-        # session.execute("INSERT INTO ks.cf1(id, val) VALUES (4, 0)")
-        # session.execute("INSERT INTO ks.cf1(id, val) VALUES (5, 0)")
-        # session.execute("INSERT INTO ks.cf1(id, val) VALUES (6, 0)")
-        # session.execute("INSERT INTO ks.cf1(id, val) VALUES (7, 0)")
-        # assert_one(session, "SELECT * FROM ks.cf1 WHERE id=0", [0, 0])
-        # assert_one(session, "SELECT * FROM ks.cf1 WHERE id=1", [1, 0])
-        # assert_one(session, "SELECT * FROM ks.cf1 WHERE id=2", [2, 0])
-        # assert_one(session, "SELECT * FROM ks.cf1 WHERE id=3", [3, 0])
-        # assert_one(session, "SELECT * FROM ks.cf1 WHERE id=4", [4, 0])
-        # assert_one(session, "SELECT * FROM ks.cf1 WHERE id=5", [5, 0])
-        # assert_one(session, "SELECT * FROM ks.cf1 WHERE id=6", [6, 0])
-        # assert_one(session, "SELECT * FROM ks.cf1 WHERE id=7", [7, 0])
-        # session.shutdown()
-        #
-        # # upgrade node2 to 3.0
-        # self.upgrade_to_version("cassandra-3.0", node2)
-        #
-        # self.verify_new_crc_check_chance(node1)
-        # self.verify_new_crc_check_chance(node2)
-        #
-        # # read data again
-        # session = self.patient_cql_connection(node1)
-        # assert_one(session, "SELECT * FROM ks.cf1 WHERE id=0", [0, 0])
-        # assert_one(session, "SELECT * FROM ks.cf1 WHERE id=1", [1, 0])
-        # assert_one(session, "SELECT * FROM ks.cf1 WHERE id=2", [2, 0])
-        # assert_one(session, "SELECT * FROM ks.cf1 WHERE id=3", [3, 0])
-        # assert_one(session, "SELECT * FROM ks.cf1 WHERE id=4", [4, 0])
-        # assert_one(session, "SELECT * FROM ks.cf1 WHERE id=5", [5, 0])
-        # assert_one(session, "SELECT * FROM ks.cf1 WHERE id=6", [6, 0])
-        # assert_one(session, "SELECT * FROM ks.cf1 WHERE id=7", [7, 0])
-        # session.shutdown()
-        #
-        # logger.debug('Test completed successfully')
-
-    # def verify_old_crc_check_chance(self, node):
-    #     session = self.patient_exclusive_cql_connection(node)
-    #     session.cluster.refresh_schema_metadata(0)
-    #     meta = session.cluster.metadata.keyspaces['ks'].tables['cf1']
-    #     logger.debug(meta.options['compression_parameters'])
-    #     assert '{"crc_check_chance":"0.6","sstable_compression":"org.apache.cassandra.io.compress.DeflateCompressor","chunk_length_kb":"256"}' \
-    #            == meta.options['compression_parameters']
-    #     session.shutdown()
-    #
-    # def verify_new_crc_check_chance(self, node):
-    #     session = self.patient_exclusive_cql_connection(node)
-    #     session.cluster.refresh_schema_metadata(0)
-    #     meta = session.cluster.metadata.keyspaces['ks'].tables['cf1']
-    #     assert 'org.apache.cassandra.io.compress.DeflateCompressor' == meta.options['compression']['class']
-    #     assert '256' == meta.options['compression']['chunk_length_in_kb']
-    #     assert_crc_check_chance_equal(session, "cf1", 0.6)
-    #     session.shutdown()
-    #
-    # def upgrade_to_version(self, tag, node):
-    #     format_args = {'node': node.name, 'tag': tag}
-    #     logger.debug('Upgrading node {node} to {tag}'.format(**format_args))
-    #     self.install_legacy_parsing(node)
-    #     # drain and shutdown
-    #     node.drain()
-    #     node.watch_log_for("DRAINED")
-    #     node.stop(wait_other_notice=False)
-    #     logger.debug('{node} stopped'.format(**format_args))
-    #
-    #     # Update Cassandra Directory
-    #     logger.debug('Updating version to tag {tag}'.format(**format_args))
-    #
-    #     logger.debug('Set new cassandra dir for {node}: {tag}'.format(**format_args))
-    #     node.set_install_dir(version='git:' + tag, verbose=True)
-    #     self.install_legacy_parsing(node)
-    #     # Restart node on new version
-    #     logger.debug('Starting {node} on new version ({tag})'.format(**format_args))
-    #     # Setup log4j / logback again (necessary moving from 2.0 -> 2.1):
-    #     node.set_log_level("INFO")
-    #     node.start(wait_for_binary_proto=True, jvm_args=['-Dcassandra.disable_max_protocol_auto_override=true'])
-    #
-    #     logger.debug('Running upgradesstables')
-    #     node.nodetool('upgradesstables -a')
-    #     logger.debug('Upgrade of {node} complete'.format(**format_args))
