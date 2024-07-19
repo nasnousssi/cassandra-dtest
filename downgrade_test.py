@@ -257,7 +257,76 @@ class TestDonwgradeTool(Tester):
         assert_one(session, "SELECT user_id, username FROM ks.users_by_email WHERE email = 'carol@example.com';", ['2', 'carol'])
 
 
+    def test_downgrade_drop_column(self):
+        """
+        Tests behavior of compression property crc_check_chance after upgrade to 3.0,
+        when it was promoted to a top-level property
 
+        @jira_ticket CASSANDRA-9839
+        """
+        cluster = self.cluster
+
+        ## need to change last casandra.yaml to none
+
+        cluster.populate(2)
+
+#        for node in cluster.nodelist():
+#            node.set_configuration_options(values={'storage_compatibility_mode': 'NONE'})
+
+        for node in cluster.nodelist():
+            self.update_compatibility_mode(node, "NONE")
+            
+        #cluster.start(jvm_args=["-Dcassandra.storage_compatibility_mode=NONE"])
+        cluster.start()
+
+        node1, node2 = cluster.nodelist()
+
+        running50 = node1.get_base_cassandra_version() >= 5.0
+        assert running50
+
+        session = self.patient_cql_connection(node1)
+
+        cassandra = self.patient_exclusive_cql_connection(node1, user='cassandra', password='cassandra')
+
+        self.set_rf2_on_system_auth(cassandra)
+
+        session.execute("CREATE KEYSPACE ks WITH replication = {'class':'SimpleStrategy', 'replication_factor':2}")
+        session.execute("""CREATE TABLE ks.cf1 (id int primary key, val int) """)
+
+        session.execute("INSERT INTO ks.cf1(id, val) VALUES (0, 0)")
+        session.execute("INSERT INTO ks.cf1(id, val) VALUES (1, 0)")
+
+        assert_one(session, "SELECT * FROM ks.cf1 WHERE id=0", [0, 0])
+        assert_one(session, "SELECT * FROM ks.cf1 WHERE id=1", [1, 0])
+
+        session.execute("ALTER TABLE ks.cf1 DROP val;")
+
+        assert_one(session, "SELECT * FROM ks.cf1 WHERE id=0", [0])
+        assert_one(session, "SELECT * FROM ks.cf1 WHERE id=1", [1])
+
+        #cluster.stop()
+
+        for node in cluster.nodelist():
+            faulthandler.enable()
+            self.stop_node(node)
+            self.downgrade(node, VERSION_40, "ks","cf1")
+            self.downgrade_system_keyspaces(node, VERSION_40)
+            self._cleanup(node)
+            node.set_install_dir(version="4.1.5")
+
+
+        self.cluster.set_install_dir(version="4.1.5")
+        
+
+        mark = node1.mark_log()
+        
+        self.cluster.start(no_wait=True, wait_for_binary_proto=True)
+
+        node1.watch_log_for("Starting listening for CQL", from_mark=mark)
+
+        session = self.patient_cql_connection(node1)
+
+        assert_all(session, "SELECT * FROM ks.cf1", [[0], [1]],cl=ConsistencyLevel.ONE, ignore_order=True)
 
 
 
