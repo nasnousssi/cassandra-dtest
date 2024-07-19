@@ -9,6 +9,7 @@ from dtest import Tester
 from tools.assertions import  assert_one, assert_all
 from ccmlib import common as ccmcommon
 import faulthandler
+from tools.assertions import assert_invalid, assert_one
 
 since = pytest.mark.since
 logger = logging.getLogger(__name__)
@@ -200,12 +201,6 @@ class TestDonwgradeTool(Tester):
 
         session = self.patient_cql_connection(node1)
 
-        #cassandra = self.patient_exclusive_cql_connection(node1, user='cassandra', password='cassandra')
-
-        #self.set_rf2_on_system_auth(cassandra)
-
-
-
 
         session.execute("CREATE KEYSPACE IF NOT EXISTS ks WITH replication = {'class': 'SimpleStrategy', 'replication_factor': 2};")
         session.execute("""CREATE TABLE ks.users (user_id TEXT PRIMARY KEY, username TEXT,email TEXT, age INT); """)
@@ -226,9 +221,6 @@ class TestDonwgradeTool(Tester):
         
         assert_one(session, "SELECT user_id, username FROM ks.users_by_email WHERE email = 'carol@example.com';", ['2', 'carol'])
 
-        #self.cluster.repair()
-        #cluster.stop()
-        #self.patient_cql_connection(node2)
 
         for node in cluster.nodelist():
             faulthandler.enable()
@@ -544,6 +536,91 @@ class TestDonwgradeTool(Tester):
         # session.execute("INSERT INTO ks.test (key, column1, column2, column3, value) VALUES ('foo', 4, 3, 2, 'bar')")
         # session.execute("ALTER TABLE test RENAME column1 TO foo1 AND column2 TO foo2 AND column3 TO foo3")
         # assert_one(session, "SELECT foo1, foo2, foo3 FROM test", [4, 3, 2])
+
+
+    def test_downgrade_drop_materialzed_view(self):
+        """
+        Tests behavior of compression property crc_check_chance after upgrade to 3.0,
+        when it was promoted to a top-level property
+
+        @jira_ticket CASSANDRA-9839
+        """
+
+        cluster = self.cluster
+
+        cluster.populate(2)
+
+#        for node in cluster.nodelist():
+#            node.set_configuration_options(values={'storage_compatibility_mode': 'NONE'})
+
+        for node in cluster.nodelist():
+            self.update_compatibility_mode(node, "NONE")
+
+        cluster.set_configuration_options(values={'materialized_views_enabled': 'true'})
+        #cluster.start(jvm_args=["-Dcassandra.storage_compatibility_mode=NONE"])
+        cluster.start(no_wait=True, wait_for_binary_proto=True)
+
+
+        node1, node2 = cluster.nodelist()
+        node1.watch_log_for("Created default superuser role")
+        node2.watch_log_for("Created default superuser role")
+
+        running50 = node1.get_base_cassandra_version() >= 5.0
+        assert running50
+
+        session = self.patient_cql_connection(node1)
+
+
+        session.execute("CREATE KEYSPACE IF NOT EXISTS ks WITH replication = {'class': 'SimpleStrategy', 'replication_factor': 2};")
+        session.execute("""CREATE TABLE ks.users (user_id TEXT PRIMARY KEY, username TEXT,email TEXT, age INT); """)
+
+        
+        session.execute("""
+            CREATE MATERIALIZED VIEW ks.users_by_email AS
+            SELECT user_id, username, email, age
+            FROM ks.users
+            WHERE email IS NOT NULL and user_id IS NOT NULL
+            PRIMARY KEY (email, user_id);
+        """)
+ 
+        session.execute("INSERT INTO ks.users (user_id, username, email, age) VALUES ('1', 'alice', 'alice@example.com', 30);")
+        session.execute("INSERT INTO ks.users (user_id, username, email, age) VALUES ('2', 'carol', 'carol@example.com', 35);")
+        session.execute("INSERT INTO ks.users (user_id, username, email, age) VALUES ('3', 'carol', 'karl@example.com', 32);")       
+        
+        
+        assert_one(session, "SELECT user_id, username FROM ks.users_by_email WHERE email = 'carol@example.com';", ['2', 'carol'])
+
+        session.execute("DROP MATERIALIZED VIEW ks.users_by_email;")
+
+
+        for node in cluster.nodelist():
+            faulthandler.enable()
+            print(node)
+            self.stop_node(node)
+            self.downgrade(node, VERSION_40, "ks","users")
+            self.downgrade(node, VERSION_40, "ks","users_by_email")
+            self.downgrade_system_keyspaces(node, VERSION_40)
+            self._cleanup(node)
+            node.set_install_dir(version="4.1.5")
+            #node.set_configuration_options(values={'enable_materialized_views': 'true'})
+
+
+        self.cluster.set_install_dir(version="4.1.5")
+        
+
+        mark = node1.mark_log()
+        cluster.set_configuration_options(values={'enable_materialized_views': 'true'})
+        self.cluster.start(no_wait=True, wait_for_binary_proto=True)
+
+        node1.watch_log_for("Starting listening for CQL", from_mark=mark)
+
+        session = self.patient_cql_connection(node1)
+        
+        assert_invalid(session, "SELECT user_id, username FROM ks.users_by_email WHERE email = 'carol@example.com';")
+
+
+           
+
 
     def downgrade_system_keyspaces(self, node, version):
             self.downgrade(node, version, "system_auth","cidr_groups")
