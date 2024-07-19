@@ -81,10 +81,10 @@ class TestDonwgradeTool(Tester):
             self.downgrade(node, VERSION_40, "ks","cf1")
             self.downgrade_system_keyspaces(node, VERSION_40)
             self._cleanup(node)
-            node.set_install_dir(install_dir="/Users/anisbenbrahim/Documents/projet/ericsson/downgrade_tool_for_cassandra_5/cassandra4")
+            node.set_install_dir(version="4.1.5")
 
 
-        self.cluster.set_install_dir(install_dir="/Users/anisbenbrahim/Documents/projet/ericsson/downgrade_tool_for_cassandra_5/cassandra4")
+        self.cluster.set_install_dir(version="4.1.5")
         
 
         mark = node1.mark_log()
